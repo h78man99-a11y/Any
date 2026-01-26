@@ -1,0 +1,16 @@
+# Python temporary files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local data file (so it doesn't leak your scraped numbers to GitHub)
+nm.json
+
+# Environment variables and logs
+.env
+*.log
+
+# OS specific files
+.DS_Store
+Thumbs.db

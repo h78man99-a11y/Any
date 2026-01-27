@@ -90,7 +90,7 @@ def run_heavy_load():
             last_rotation = time.time()
 
         threads = []
-        for _ in range(5000):
+        for _ in range(500):
             t = threading.Thread(target=make_request)
             t.daemon = True
             t.start()

